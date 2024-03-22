@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -47,7 +48,7 @@ func main() {
 	// Attach ebpf program to a cgroupv2
 	link, err := link.AttachCgroup(link.CgroupOptions{
 		Path:    cgroupPath,
-		Program: objs.bpfPrograms.BpfSockOps,
+		Program: objs.bpfPrograms.BpfSockopsCb,
 		Attach:  ebpf.AttachCGroupSockOps,
 	})
 	if err != nil {
@@ -80,6 +81,7 @@ func main() {
 	// Wait
 	<-stopper
 }
+
 func findCgroupPath() (string, error) {
 	cgroupPath := "/sys/fs/cgroup"
 
@@ -129,36 +131,35 @@ func readLoop(rd *ringbuf.Reader) {
 		)
 	}
 }
+
 func intToIP(ipNum uint32) net.IP {
 	ip := make(net.IP, 4)
-	binary.NativeEndian.PutUint32(ip, ipNum)
+	binary.LittleEndian.PutUint32(ip, ipNum)
 	return ip
 }
 
-
 // 将 netflags 的 uint8 值转换为字符串表示
 func netflagsToString(flags uint8) string {
-    var flagStrings []string
+	var flagStrings []string
 
-    if flags&1 != 0 {
-        flagStrings = append(flagStrings, "SYN")
-    }
-    if flags&2 != 0 {
-        flagStrings = append(flagStrings, "ACK")
-    }
-    if flags&4 != 0 {
-        flagStrings = append(flagStrings, "FIN")
-    }
-    if flags&8 != 0 {
-        flagStrings = append(flagStrings, "RST")
-    }
-    if flags&16 != 0 {
-        flagStrings = append(flagStrings, "PSH")
-    }
-    if flags&32 != 0 {
-        flagStrings = append(flagStrings, "URG")
-    }
+	if flags&1 != 0 {
+		flagStrings = append(flagStrings, "SYN")
+	}
+	if flags&2 != 0 {
+		flagStrings = append(flagStrings, "ACK")
+	}
+	if flags&4 != 0 {
+		flagStrings = append(flagStrings, "FIN")
+	}
+	if flags&8 != 0 {
+		flagStrings = append(flagStrings, "RST")
+	}
+	if flags&16 != 0 {
+		flagStrings = append(flagStrings, "PSH")
+	}
+	if flags&32 != 0 {
+		flagStrings = append(flagStrings, "URG")
+	}
 
-    return strings.Join(flagStrings, ", ")
+	return strings.Join(flagStrings, ", ")
 }
-

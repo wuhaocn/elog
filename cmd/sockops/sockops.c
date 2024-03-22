@@ -75,7 +75,7 @@ static __always_inline int sock_ops_proc(struct bpf_sock_ops *skops) {
 
 // Socket 操作的 eBPF 程序
 SEC("sockops")
-int bpf_sock_ops(struct bpf_sock_ops *skops) {
+int bpf_sockops_cb(struct bpf_sock_ops *skops) {
     sock_ops_proc(skops);
     return 1;
 }
