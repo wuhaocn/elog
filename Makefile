@@ -13,8 +13,8 @@ generate:
 
 
 build: generate
-	cd cmd/classifier && \
-	go build -o ../../bin/classifier .
+	cd cmd/sockops && \
+	go build -o ../../bin/sockops .
 
 generate: export BPF_CLANG := $(CLANG)
 generate: export BPF_CFLAGS := $(CFLAGS)

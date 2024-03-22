@@ -2,35 +2,36 @@
 #include "common.h"
 #include "bpf_endian.h"
 #include "bpf_helpers.h"
+#include <stdbool.h>
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
 #define MAX_MAP_ENTRIES 16
 
-
-
-
-struct {
-	__uint(type, BPF_MAP_TYPE_RINGBUF);
-	__uint(max_entries, 1 << 24);
-} events SEC(".maps");
-
+// 定义事件结构
 struct event {
-	u16 sport;
-	u16 dport;
-	u32 saddr;
-	u32 daddr;
-	u32 curtime;
-	u8 netproto;
+    u16 sport;
+    u16 dport;
+    u32 saddr;
+    u32 daddr;
+    u64 curtime;
+    u8 netproto;
     u8 netcmd; 
+    u8 netflags;
     u8 appproto;
     u8 appcmd;
 };
-struct event *unused_event __attribute__((unused));
 
-static __always_inline int parse_ip_src_addr(struct xdp_md *ctx) {
-    void *data_end = (void *)(long)ctx->data_end;
-    void *data     = (void *)(long)ctx->data;
+// 定义事件结构的 Ring Buffer
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1 << 24);
+} events SEC(".maps");
+struct event *unused_event __attribute__((unused));
+// 解析 IP 源地址并记录相关信息到 Ring Buffer
+static __always_inline int parse_ip_src_addr(struct xdp_md *ctx, bool incoming) {
+void *data_end = (void *)(long)ctx->data_end;
+    void *data = (void *)(long)ctx->data;
 
     struct ethhdr *eth = data;
     struct iphdr *iph;
@@ -43,7 +44,7 @@ static __always_inline int parse_ip_src_addr(struct xdp_md *ctx) {
         return 0;
     }
 
-    // 初始化iph指针
+    // 初始化 IP 头指针
     iph = (struct iphdr *)(eth + 1);
     if ((void *)(iph + 1) > data_end) {
         return 0;
@@ -54,41 +55,58 @@ static __always_inline int parse_ip_src_addr(struct xdp_md *ctx) {
         return 0;
     }
 
-    net_info->netproto = iph->protocol;
+    // 记录 IP 地址和协议
     net_info->saddr = iph->saddr;
     net_info->daddr = iph->daddr;
-    net_info->curtime =  bpf_ktime_get_ns() / 1000000; // 转换为毫秒
-    // 如果是TCP包
+    net_info->netproto = iph->protocol;
+
+    // 记录当前时间（毫秒）
+    net_info->curtime = bpf_ktime_get_ns();
+
+    // 如果是 TCP 数据包，则记录源端口和目标端口，并且记录 TCP 标志
     if (iph->protocol == IPPROTO_TCP) {
         tcph = (struct tcphdr *)((void *)iph + iph->ihl * 4);
-        if ((void *)(tcph + 1) > data_end) {
-            bpf_ringbuf_submit(net_info, 0);
-            return 0;
+        if ((void *)(tcph + 1) <= data_end) {
+            net_info->sport = bpf_ntohs(tcph->source);
+            net_info->dport = bpf_ntohs(tcph->dest);
+            net_info->netflags = tcph->syn | (tcph->ack << 1) | (tcph->fin << 2) | (tcph->rst << 3) | (tcph->psh << 4) | (tcph->urg << 5);
         }
-        net_info->sport = bpf_ntohs(tcph->source);
-        net_info->dport = bpf_ntohs(tcph->dest);
-        
     } else {
-        // 如果不是TCP包，将端口设置为0
+        // 如果不是 TCP 数据包，将端口和 TCP 标志都设置为 0
         net_info->sport = 0;
         net_info->dport = 0;
-
+        net_info->netflags = 0;
     }
 
+    // 标记数据包方向
+    if (incoming) {
+        net_info->netcmd = 1; // Incoming
+    } else {
+        net_info->netcmd = 2; // Outgoing
+    }
+
+    // 提交事件到 Ring Buffer
     bpf_ringbuf_submit(net_info, 0);
 
     return 1;
 }
 
-SEC("xdp_md")
+// XDP 程序入口
+SEC("xdp_devmap_xmit")
 int xdp_prog_func(struct xdp_md *ctx) {
-	if (!parse_ip_src_addr(ctx)) {
-		// Not an IPv4 packet, so don't count it.
-		goto done;
-	}
-
+    // 解析接收到的 IP 源地址并记录信息到 Ring Buffer
+    if (!parse_ip_src_addr(ctx, true)) {
+        // 如果不是 IPv4 数据包，则直接放行
+        goto done;
+    }
 
 done:
-	// Try changing this to XDP_DROP and see what happens!
-	return XDP_PASS;
+    // 解析发送出去的 IP 源地址并记录信息到 Ring Buffer
+    if (!parse_ip_src_addr(ctx, false)) {
+        // 如果不是 IPv4 数据包，则直接放行
+        goto pass;
+    }
+
+pass:
+    return XDP_PASS;
 }

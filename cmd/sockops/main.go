@@ -1,11 +1,3 @@
-// This program demonstrates attaching an eBPF program to a network interface
-// with XDP (eXpress Data Path). The program parses the IPv4 source address
-// from packets and writes the packet count by IP to an LRU hash map.
-// The userspace program (Go code in this file) prints the contents
-// of the map to stdout every second.
-// It is possible to modify the XDP program to drop or redirect packets
-// as well -- give it a try!
-// This example depends on bpf_link, available in Linux kernel version 5.7 or newer.
 package main
 
 import (
@@ -15,46 +7,55 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/cilium/ebpf/rlimit"
+
+	"golang.org/x/sys/unix"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -type event bpf xdp.c -- -I../../headers
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "linux" -type event bpf sockops.c -- -I../../headers
 
 func main() {
 	stopper := make(chan os.Signal, 1)
-	if len(os.Args) < 2 {
-		log.Fatalf("Please specify a network interface")
+	signal.Notify(stopper, os.Interrupt, syscall.SIGTERM)
+
+	// Allow the current process to lock memory for eBPF resources.
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal(err)
 	}
 
-	// Look up the network interface by name.
-	ifaceName := os.Args[1]
-	iface, err := net.InterfaceByName(ifaceName)
+	// Find the path to a cgroup enabled to version 2
+	cgroupPath, err := findCgroupPath()
 	if err != nil {
-		log.Fatalf("lookup network iface %q: %s", ifaceName, err)
+		log.Fatal(err)
 	}
 
-	// Load pre-compiled programs into the kernel.
+	// Load pre-compiled programs and maps into the kernel.
 	objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
-		log.Fatalf("loading objects: %s", err)
+		log.Fatalf("loading objects: %v", err)
 	}
 	defer objs.Close()
 
-	// Attach the program.
-	l, err := link.AttachXDP(link.XDPOptions{
-		Program:   objs.XdpProgFunc,
-		Interface: iface.Index,
+	// Attach ebpf program to a cgroupv2
+	link, err := link.AttachCgroup(link.CgroupOptions{
+		Path:    cgroupPath,
+		Program: objs.bpfPrograms.BpfSockOps,
+		Attach:  ebpf.AttachCGroupSockOps,
 	})
 	if err != nil {
-		log.Fatalf("could not attach XDP program: %s", err)
+		log.Fatal(err)
 	}
-	defer l.Close()
+	defer link.Close()
 
-	log.Printf("Attached XDP program to iface %q (index %d)", iface.Name, iface.Index)
-	log.Printf("Press Ctrl-C to exit and remove the program")
+	log.Printf("eBPF program loaded and attached on cgroup %s\n", cgroupPath)
 
 	rd, err := ringbuf.NewReader(objs.bpfMaps.Events)
 	if err != nil {
@@ -78,6 +79,20 @@ func main() {
 
 	// Wait
 	<-stopper
+}
+func findCgroupPath() (string, error) {
+	cgroupPath := "/sys/fs/cgroup"
+
+	var st syscall.Statfs_t
+	err := syscall.Statfs(cgroupPath, &st)
+	if err != nil {
+		return "", err
+	}
+	isCgroupV2Enabled := st.Type == unix.CGROUP2_SUPER_MAGIC
+	if !isCgroupV2Enabled {
+		cgroupPath = filepath.Join(cgroupPath, "unified")
+	}
+	return cgroupPath, nil
 }
 
 func readLoop(rd *ringbuf.Reader) {
