@@ -3,6 +3,9 @@
         "ip.h": "c",
         "bpf_endian.h": "c",
         "common.h": "c",
-        "bpf_helpers.h": "c"
+        "bpf_helpers.h": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c"
     }
 }

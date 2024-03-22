@@ -9,3 +9,14 @@ generate: export BPF_CLANG := $(CLANG)
 generate: export BPF_CFLAGS := $(CFLAGS)
 generate:
 	go generate ./...
+
+
+
+build: generate
+	cd cmd/classifier && \
+	go build -o ../../bin/classifier .
+
+generate: export BPF_CLANG := $(CLANG)
+generate: export BPF_CFLAGS := $(CFLAGS)
+generate:
+	go generate ./...

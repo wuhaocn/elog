@@ -20,7 +20,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -type event bpf xdp.c -- -I../../headers
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -type event bpf classifier.c -- -I../../headers
 
 func main() {
 	stopper := make(chan os.Signal, 1)
@@ -44,7 +44,7 @@ func main() {
 
 	// Attach the program.
 	l, err := link.AttachXDP(link.XDPOptions{
-		Program:   objs.XdpProgFunc,
+		Program:   objs.CaptureOutgoingPackets,
 		Interface: iface.Index,
 	})
 	if err != nil {
@@ -111,10 +111,9 @@ func readLoop(rd *ringbuf.Reader) {
 		)
 	}
 }
+
 func intToIP(ipNum uint32) net.IP {
 	ip := make(net.IP, 4)
-	binary.NativeEndian.PutUint32(ip, ipNum)
+	binary.BigEndian.PutUint32(ip, ipNum)
 	return ip
 }
-
-

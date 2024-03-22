@@ -20,64 +20,69 @@ struct event {
 	u16 dport;
 	u32 saddr;
 	u32 daddr;
-	u32 srtt;
-	u8 protocol;
+	u32 curtime;
+	u8 netproto;
+    u8 netcmd; 
+    u8 appproto;
+    u8 appcmd;
 };
 struct event *unused_event __attribute__((unused));
 
-static __always_inline int parse_ip_src_addr(struct xdp_md *ctx, __u32 *ip_src_addr) {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data     = (void *)(long)ctx->data;
+static __always_inline int parse_ip_src_addr(struct xdp_md *ctx) {
+    void *data_end = (void *)(long)ctx->data_end;
+    void *data     = (void *)(long)ctx->data;
 
     struct ethhdr *eth = data;
     struct iphdr *iph;
     struct tcphdr *tcph;
 
-	if ((void *)(eth + 1) > data_end) {
-		return 0;
-	}
-	if (eth->h_proto != bpf_htons(ETH_P_IP)) {
-		return 0;
-	}
-	if ((void *)(iph + 1) > data_end) {
-		return 0;
-	}
+    if ((void *)(eth + 1) > data_end) {
+        return 0;
+    }
+    if (eth->h_proto != bpf_htons(ETH_P_IP)) {
+        return 0;
+    }
 
-	struct event *tcp_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
-	if (!tcp_info) {
-		return 0;
-	}
-	*ip_src_addr = (__u32)(iph->saddr);
-	__u32 ip_dst_addr = (__u32)(iph->saddr);
-	tcp_info->protocol = iph->protocol;
-	tcp_info->saddr = *ip_src_addr;
-	// tcp_info->daddr = *ip_dst_addr;
-    //tcp
+    // 初始化iph指针
+    iph = (struct iphdr *)(eth + 1);
+    if ((void *)(iph + 1) > data_end) {
+        return 0;
+    }
+
+    struct event *net_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
+    if (!net_info) {
+        return 0;
+    }
+
+    net_info->netproto = iph->protocol;
+    net_info->saddr = iph->saddr;
+    net_info->daddr = iph->daddr;
+    net_info->curtime =  bpf_ktime_get_ns() / 1000000; // 转换为毫秒
+    // 如果是TCP包
     if (iph->protocol == IPPROTO_TCP) {
-        tcph = (void *)iph + iph->ihl * 4;
-        if (tcph + 1 > data_end)
+        tcph = (struct tcphdr *)((void *)iph + iph->ihl * 4);
+        if ((void *)(tcph + 1) > data_end) {
+            bpf_ringbuf_submit(net_info, 0);
             return 0;
-		tcp_info->dport = ntohs(tcph->source);
-		tcp_info->sport = ntohs(tcph->dest);
-		tcp_info->srtt = 1000;
+        }
+        net_info->sport = bpf_ntohs(tcph->source);
+        net_info->dport = bpf_ntohs(tcph->dest);
+        
+    } else {
+        // 如果不是TCP包，将端口设置为0
+        net_info->sport = 0;
+        net_info->dport = 0;
 
-		bpf_ringbuf_submit(tcp_info, 0);
-    } else{
-		//use test
-		tcp_info->dport = 0;
-		tcp_info->sport = 0;
-		tcp_info->srtt = 1000;
-		bpf_ringbuf_submit(tcp_info, 0);
-	}
+    }
 
-	
-	return 1;
+    bpf_ringbuf_submit(net_info, 0);
+
+    return 1;
 }
 
-SEC("xdp")
+SEC("xdp_md")
 int xdp_prog_func(struct xdp_md *ctx) {
-	__u32 ip;
-	if (!parse_ip_src_addr(ctx, &ip)) {
+	if (!parse_ip_src_addr(ctx)) {
 		// Not an IPv4 packet, so don't count it.
 		goto done;
 	}
