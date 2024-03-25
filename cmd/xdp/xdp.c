@@ -38,10 +38,10 @@ void *data_end = (void *)(long)ctx->data_end;
     struct tcphdr *tcph;
 
     if ((void *)(eth + 1) > data_end) {
-        return 0;
+        //return 0;
     }
     if (eth->h_proto != bpf_htons(ETH_P_IP)) {
-        return 0;
+        //return 0;
     }
 
     // 初始化 IP 头指针

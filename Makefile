@@ -11,6 +11,16 @@ generate:
 	go generate ./...
 
 
+# build: generate
+# 	cd cmd/trace && \
+# 	go build -o ../../bin/trace .
+
+# generate: export BPF_CLANG := $(CLANG)
+# generate: export BPF_CFLAGS := $(CFLAGS)
+# generate:
+# 	go generate ./...
+
+
 
 # build: generate
 # 	cd cmd/sockops && \
