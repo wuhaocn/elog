@@ -38,16 +38,23 @@ struct sk_info {
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries, 1 << 24);
-} rtt_events SEC(".maps");
+} sockops_events SEC(".maps");
 
-struct rtt_event {
-	u16 sport;
-	u16 dport;
-	u32 saddr;
-	u32 daddr;
-	u32 srtt;
+// 定义事件结构
+struct sockops_event {
+    u16 sport;
+    u16 dport;
+    u32 saddr;
+    u32 daddr;
+    u32 srtt;
+    u64 curtime;
+    u8 netproto;
+    u8 netcmd; 
+    u8 netflags;
+    u8 appproto;
+    u8 appcmd;
 };
-struct rtt_event *unused_event __attribute__((unused));
+struct sockops_event *unused_event __attribute__((unused));
 
 static inline void init_sk_key(struct bpf_sock_ops *skops, struct sk_key *sk_key) {
 	sk_key->local_ip4   = bpf_ntohl(skops->local_ip4);
@@ -83,7 +90,7 @@ static inline void bpf_sock_ops_establish_cb(struct bpf_sock_ops *skops, u8 sock
 static inline void bpf_sock_ops_rtt_cb(struct bpf_sock_ops *skops) {
 	struct sk_key sk_key = {};
 	struct sk_info *sk_info;
-	struct rtt_event *rtt_event;
+	struct sockops_event *sockops_event;
 
 	// Initialize the 4-tuple key
 	init_sk_key(skops, &sk_key);
@@ -93,36 +100,50 @@ static inline void bpf_sock_ops_rtt_cb(struct bpf_sock_ops *skops) {
 	if (!sk_info)
 		return;
 
-	rtt_event = bpf_ringbuf_reserve(&rtt_events, sizeof(struct rtt_event), 0);
-	if (!rtt_event) {
+	sockops_event = bpf_ringbuf_reserve(&sockops_events, sizeof(struct sockops_event), 0);
+	if (!sockops_event) {
 		return;
 	}
 
 	switch (sk_info->sk_type) {
 	case SOCK_TYPE_ACTIVE:
-		// If socket is 'active', 'local' means 'source'
-		// and 'remote' means 'destination'
-		rtt_event->saddr = sk_info->sk_key.local_ip4;
-		rtt_event->daddr = sk_info->sk_key.remote_ip4;
-		rtt_event->sport = sk_info->sk_key.local_port;
-		rtt_event->dport = sk_info->sk_key.remote_port;
+		sockops_event->saddr = sk_info->sk_key.local_ip4;
+		sockops_event->daddr = sk_info->sk_key.remote_ip4;
+		sockops_event->sport = sk_info->sk_key.local_port;
+		sockops_event->dport = sk_info->sk_key.remote_port;
 		break;
 	case SOCK_TYPE_PASSIVE:
-		// If socket is 'passive', 'local' means 'destination'
-		// and 'remote' means 'source'
-		rtt_event->saddr = sk_info->sk_key.remote_ip4;
-		rtt_event->daddr = sk_info->sk_key.local_ip4;
-		rtt_event->sport = sk_info->sk_key.remote_port;
-		rtt_event->dport = sk_info->sk_key.local_port;
+		sockops_event->saddr = sk_info->sk_key.remote_ip4;
+		sockops_event->daddr = sk_info->sk_key.local_ip4;
+		sockops_event->sport = sk_info->sk_key.remote_port;
+		sockops_event->dport = sk_info->sk_key.local_port;
 		break;
 	}
 
 	// Extract smoothed RTT
-	rtt_event->srtt = skops->srtt_us >> 3;
-	rtt_event->srtt /= 1000;
+	sockops_event->srtt = skops->srtt_us >> 3;
+	sockops_event->srtt /= 1000;
+    // Record current time
+    sockops_event->curtime = bpf_ktime_get_ns();
+
+    // Record network protocol
+    sockops_event->netproto = skops->family;
+
+    // Record network command
+    sockops_event->netcmd = skops->op;
+
+    // Record network flags
+    sockops_event->netflags = skops->skb_tcp_flags;
+
+    // Record application protocol
+    sockops_event->appproto = 0; // Modify this line to record actual application protocol if needed
+
+    // Record application command
+    sockops_event->appcmd = 0; // Modify this line to record actual application command if needed
+
 
 	// Send RTT event data to userspace app via ring buffer
-	bpf_ringbuf_submit(rtt_event, 0);
+	bpf_ringbuf_submit(sockops_event, 0);
 }
 
 static inline void bpf_sock_ops_state_cb(struct bpf_sock_ops *skops) {

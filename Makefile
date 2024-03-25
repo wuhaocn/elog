@@ -12,11 +12,11 @@ generate:
 
 
 
-build: generate
-	cd cmd/sockops && \
-	go build -o ../../bin/sockops .
+# build: generate
+# 	cd cmd/sockops && \
+# 	go build -o ../../bin/sockops .
 
-generate: export BPF_CLANG := $(CLANG)
-generate: export BPF_CFLAGS := $(CFLAGS)
-generate:
-	go generate ./...
+# generate: export BPF_CLANG := $(CLANG)
+# generate: export BPF_CFLAGS := $(CFLAGS)
+# generate:
+# 	go generate ./...

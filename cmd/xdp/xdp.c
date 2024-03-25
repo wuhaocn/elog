@@ -29,7 +29,7 @@ struct {
 } events SEC(".maps");
 struct event *unused_event __attribute__((unused));
 // 解析 IP 源地址并记录相关信息到 Ring Buffer
-static __always_inline int parse_ip_src_addr(struct xdp_md *ctx, bool incoming) {
+static __always_inline int parse_ip_src_addr(struct xdp_md *ctx) {
 void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 
@@ -77,14 +77,7 @@ void *data_end = (void *)(long)ctx->data_end;
         net_info->dport = 0;
         net_info->netflags = 0;
     }
-
-    // 标记数据包方向
-    if (incoming) {
-        net_info->netcmd = 1; // Incoming
-    } else {
-        net_info->netcmd = 2; // Outgoing
-    }
-
+    net_info->netcmd = 0; // Outgoing
     // 提交事件到 Ring Buffer
     bpf_ringbuf_submit(net_info, 0);
 
@@ -92,21 +85,8 @@ void *data_end = (void *)(long)ctx->data_end;
 }
 
 // XDP 程序入口
-SEC("xdp_devmap_xmit")
+SEC("xdp")
 int xdp_prog_func(struct xdp_md *ctx) {
-    // 解析接收到的 IP 源地址并记录信息到 Ring Buffer
-    if (!parse_ip_src_addr(ctx, true)) {
-        // 如果不是 IPv4 数据包，则直接放行
-        goto done;
-    }
-
-done:
-    // 解析发送出去的 IP 源地址并记录信息到 Ring Buffer
-    if (!parse_ip_src_addr(ctx, false)) {
-        // 如果不是 IPv4 数据包，则直接放行
-        goto pass;
-    }
-
-pass:
+    parse_ip_src_addr(ctx);
     return XDP_PASS;
 }
