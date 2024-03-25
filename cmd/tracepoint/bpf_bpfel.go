@@ -12,14 +12,6 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-type bpfEvent struct {
-	Comm  [16]uint8
-	Sport uint16
-	Dport uint16
-	Saddr uint32
-	Daddr uint32
-}
-
 // loadBpf returns the embedded CollectionSpec for bpf.
 func loadBpf() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_BpfBytes)
@@ -61,14 +53,14 @@ type bpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
-	TcpConnect *ebpf.ProgramSpec `ebpf:"tcp_connect"`
+	MmPageAlloc *ebpf.ProgramSpec `ebpf:"mm_page_alloc"`
 }
 
 // bpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	Events *ebpf.MapSpec `ebpf:"events"`
+	CountingMap *ebpf.MapSpec `ebpf:"counting_map"`
 }
 
 // bpfObjects contains all objects after they have been loaded into the kernel.
@@ -90,12 +82,12 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	Events *ebpf.Map `ebpf:"events"`
+	CountingMap *ebpf.Map `ebpf:"counting_map"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
-		m.Events,
+		m.CountingMap,
 	)
 }
 
@@ -103,12 +95,12 @@ func (m *bpfMaps) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
-	TcpConnect *ebpf.Program `ebpf:"tcp_connect"`
+	MmPageAlloc *ebpf.Program `ebpf:"mm_page_alloc"`
 }
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
-		p.TcpConnect,
+		p.MmPageAlloc,
 	)
 }
 
