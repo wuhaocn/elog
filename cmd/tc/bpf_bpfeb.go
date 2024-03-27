@@ -22,9 +22,10 @@ type bpfEvent struct {
 	Netproto uint8
 	Netcmd   uint8
 	Netflags uint8
-	Appproto uint8
-	Appcmd   uint8
-	_        [3]byte
+	_        [1]byte
+	Appproto uint32
+	Appcmd   uint32
+	_        [4]byte
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.
