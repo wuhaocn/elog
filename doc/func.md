@@ -97,6 +97,9 @@ int xdp_drop(struct xdp_md *ctx) {
 
 Traffic Control（TC）是 Linux 内核中用于网络流量控制和管理的子系统，它允许用户对网络流量进行各种操作，如限速、队列管理、过滤、分类等。在使用 eBPF 来扩展 TC 功能时，可以使用不同的 SEC 标记来定义 eBPF 程序的入口点。以下是一些常见的 TC SEC 标记定义：
 
+与 XDP 相比，tc BPF 程序可以从网络数据路径中的入口和出口点触发，而 XDP 只能从入口触发。
+内核中的两个钩子点sch_handle_ingress()和分别由和 触发。后两个是数据路径中的主要接收和发送函数，除了 XDP 之外，它们由每个进入或离开节点的网络数据包触发，从而允许 tc BPF 程序在这些钩子点上完全可见。sch_handle_egress()__netif_receive_skb_core()__dev_queue_xmit()
+
 ### simple
 ```c
 #include <linux/bpf.h>

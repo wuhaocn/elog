@@ -11,14 +11,14 @@
 # 	go generate ./...
 
 
-build: generate
-	cd cmd/trace && \
-	go build -o ../../bin/trace .
+# build: generate
+# 	cd cmd/trace && \
+# 	go build -o ../../bin/trace .
 
-generate: export BPF_CLANG := $(CLANG)
-generate: export BPF_CFLAGS := $(CFLAGS)
-generate:
-	go generate ./...
+# generate: export BPF_CLANG := $(CLANG)
+# generate: export BPF_CFLAGS := $(CFLAGS)
+# generate:
+# 	go generate ./...
 
 # build: generate
 # 	cd cmd/tracepoint && \
@@ -41,11 +41,11 @@ generate:
 # 	go generate ./...
 
 
-# build: generate
-# 	cd cmd/tc && \
-# 	go build -o ../../bin/tc .
+build: generate
+	cd cmd/tc && \
+	go build -o ../../bin/tc .
 
-# generate: export BPF_CLANG := $(CLANG)
-# generate: export BPF_CFLAGS := $(CFLAGS)
-# generate:
-# 	go generate ./...
+generate: export BPF_CLANG := $(CLANG)
+generate: export BPF_CFLAGS := $(CFLAGS)
+generate:
+	go generate ./...

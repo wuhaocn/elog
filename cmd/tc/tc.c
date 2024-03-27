@@ -84,7 +84,7 @@ static __always_inline int parse_tc(struct __sk_buff *skb) {
     return 1;
 }
 
-// XDP 程序入口
+// tc 程序入口
 SEC("tc")
 int tc_prog_func(struct __sk_buff *skb) {
     parse_tc(skb);
