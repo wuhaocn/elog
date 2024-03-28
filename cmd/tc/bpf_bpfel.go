@@ -13,19 +13,19 @@ import (
 )
 
 type bpfEvent struct {
-	Sport    uint16
-	Dport    uint16
-	Saddr    uint32
-	Daddr    uint32
-	_        [4]byte
-	Curtime  uint64
-	Netproto uint8
-	Netcmd   uint8
-	Netflags uint8
-	_        [1]byte
-	Appproto uint32
-	Appcmd   uint32
-	_        [4]byte
+	Sport        uint16
+	Dport        uint16
+	Saddr        uint32
+	Daddr        uint32
+	_            [4]byte
+	Curtime      uint64
+	Netproto     uint8
+	Netcmd       uint8
+	Netflags     uint8
+	_            [1]byte
+	Appproto     uint32
+	Appcmd       uint32
+	Apppkglength uint32
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.
