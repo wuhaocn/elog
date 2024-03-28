@@ -18,9 +18,9 @@ struct event {
     u64 curtime;
     u8 netproto;
     u8 netcmd;
-    u32 appproto;
-    u32 appcmd;
-    u32 apppkglength;
+    u8 appproto;
+    u8 appcmd;
+    u8 apppkglength;
 };
 
 // MQTT control packet structure
@@ -49,8 +49,21 @@ static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *
 
 // Function to parse MQTT control packets and record relevant information to Ring Buffer
 static __always_inline void fill_mqtt_info(struct event *net_info, struct tcphdr *tcph, void *data_end) {
-    // Implementation to parse MQTT control packets and set appproto and appcmd accordingly
+    // Set appproto to IPPROTO_MQTT for MQTT packets
     net_info->appproto = IPPROTO_MQTT;
+
+    // Pointer to the start of MQTT payload
+    u8 *mqtt_payload = (u8 *)tcph + sizeof(struct tcphdr);
+    u8 *mqtt_packet_type = mqtt_payload + 1; // MQTT Control Packet Type byte
+
+    // Check if there's enough space for at least the MQTT Control Packet Type byte
+    if (mqtt_packet_type > (u8*)data_end)
+        return;
+
+    // Read MQTT Control Packet Type
+    u8 packet_type = *mqtt_packet_type;
+    net_info->appcmd = packet_type;
+
 }
 
 // Function to parse IP source address and record relevant information to Ring Buffer
