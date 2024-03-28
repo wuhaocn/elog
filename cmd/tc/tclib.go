@@ -25,7 +25,7 @@ const (
 
 
 func logHeader(){
-    log.Printf("%-15s %-6s -> %-15s %-6s %-10s %-10s  %-10s  %-10s %-10s  %-10s %-10s",
+    log.Printf("%-15s %-6s -> %-15s %-6s %-10s %-10s  %-10s  %-10s  %-10s %-10s",
 		"Src addr",
 		"Port",
 		"Dest addr",
@@ -33,7 +33,6 @@ func logHeader(){
 		"CurTime",
 		"NetProto",
 		"NetCmd",
-		"NetFlag",
 		"AppProto",
 		"AppCmd",
         "AppLength",
@@ -41,15 +40,14 @@ func logHeader(){
 }
 
 func logEvent(event bpfEvent){
-    log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10d  %-10s %-10d  %-10d %-10d",
+    log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10s  %-10d  %-10d %-10d",
         intToIP(event.Saddr),
         event.Sport,
         intToIP(event.Daddr),
         event.Dport,
         event.Curtime,
         event.Netproto,
-        event.Netcmd,
-        netflagsToString(event.Netflags),
+        netflagsToString(event.Netcmd),
         event.Appproto,
         event.Appcmd,
         event.Apppkglength,

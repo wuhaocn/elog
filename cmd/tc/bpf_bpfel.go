@@ -21,8 +21,7 @@ type bpfEvent struct {
 	Curtime      uint64
 	Netproto     uint8
 	Netcmd       uint8
-	Netflags     uint8
-	_            [1]byte
+	_            [2]byte
 	Appproto     uint32
 	Appcmd       uint32
 	Apppkglength uint32
