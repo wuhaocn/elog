@@ -19,12 +19,15 @@ type bpfEvent struct {
 	Daddr        uint32
 	_            [4]byte
 	Curtime      uint64
+	Srtt         uint32
 	Netproto     uint8
 	Netcmd       uint8
+	Netpkglength uint8
 	Appproto     uint8
 	Appcmd       uint8
 	Apppkglength uint8
-	_            [3]byte
+	Payload      [5]uint8
+	_            [1]byte
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.
@@ -75,7 +78,8 @@ type bpfProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	Events *ebpf.MapSpec `ebpf:"events"`
+	Events           *ebpf.MapSpec `ebpf:"events"`
+	NonLinearAreaMap *ebpf.MapSpec `ebpf:"non_linear_area_map"`
 }
 
 // bpfObjects contains all objects after they have been loaded into the kernel.
@@ -97,12 +101,14 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	Events *ebpf.Map `ebpf:"events"`
+	Events           *ebpf.Map `ebpf:"events"`
+	NonLinearAreaMap *ebpf.Map `ebpf:"non_linear_area_map"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
 		m.Events,
+		m.NonLinearAreaMap,
 	)
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -25,7 +26,7 @@ const (
 
 
 func logHeader(){
-    log.Printf("%-15s %-6s -> %-15s %-6s %-10s %-10s  %-10s  %-10s  %-10s %-10s",
+    log.Printf("%-15s %-6s -> %-15s %-6s %-10s %-10s  %-10s  %-10s  %-10s %-10s %-10s",
 		"Src addr",
 		"Port",
 		"Dest addr",
@@ -36,21 +37,27 @@ func logHeader(){
 		"AppProto",
 		"AppCmd",
         "AppLength",
+        "PlayLoad",
 	)
 }
 
 func logEvent(event bpfEvent){
-    log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10s  %-10d  %-10d %-10d",
+    payloadStr := "" // 初始化为空字符串
+    for _, v := range event.Payload {
+        payloadStr += fmt.Sprintf("%02x ", uint8(v)) // 将整数转换为16进制字符串
+    }
+    log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10d  %-10d  %-10d %-10d %-15s",
         intToIP(event.Saddr),
         event.Sport,
         intToIP(event.Daddr),
         event.Dport,
         event.Curtime,
         event.Netproto,
-        netflagsToString(event.Netcmd),
+        event.Netcmd,
         event.Appproto,
         event.Appcmd,
         event.Apppkglength,
+        payloadStr,
     )
 }
 

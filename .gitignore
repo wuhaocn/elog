@@ -1,2 +1,8 @@
 .direnv
 bin
+.vscode/c_cpp_properties.json
+.vscode/settings.json
+cmd/tc/bpf_bpfeb.go
+cmd/tc/bpf_bpfeb.o
+cmd/tc/bpf_bpfel.go
+cmd/tc/bpf_bpfel.o
