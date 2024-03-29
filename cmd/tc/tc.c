@@ -34,14 +34,6 @@ struct {
 } events SEC(".maps");
 struct event *unused_event __attribute__((unused));
 
-// Define per-cpu array map for storing non-linear area data
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, int);
-    __type(value, char[MAX_PAYLOAD_LOAD]);
-} non_linear_area_map SEC(".maps");
-
 // Function to fill TCP layer information
 static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *iph, struct tcphdr *tcph) {
     net_info->saddr = iph->saddr;
@@ -54,7 +46,7 @@ static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *
 }
 
 // Function to fill MQTT information
-static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct tcphdr *tcph, void *data_end) {
+static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct tcphdr *tcph) {
     // Set appproto to IPPROTO_MQTT for MQTT packets
     net_info->appproto = IPPROTO_MQTT;
     // tcp header length
@@ -63,7 +55,7 @@ static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *
     u8 tcp_payload_offset = tcp_header_length + sizeof(struct ethhdr) + sizeof(struct iphdr);
     // eth + ip + tcp header length
     u8 tcp_payload_length = skb->len - tcp_payload_offset;
-    net_info->apppkglength = tcp_payload_length;
+    net_info->netpkglength = tcp_payload_length;
     bpf_skb_load_bytes(skb, tcp_payload_offset, &net_info->appcmd, 1);
     bpf_skb_load_bytes(skb, tcp_payload_offset + 1, &net_info->apppkglength, 1);
     bpf_skb_load_bytes(skb, tcp_payload_offset, net_info->payload, 2);
@@ -112,7 +104,7 @@ static __always_inline int parse_tc(struct __sk_buff *skb) {
 
     // Check if it's an MQTT packet
     if (tcph->dest == bpf_htons(MQTT_DEFAULT_PORT) || tcph->source == bpf_htons(MQTT_DEFAULT_PORT)){
-        fill_mqtt_info(skb, net_info, tcph, data_end);
+        fill_mqtt_info(skb, net_info, tcph);
         // Submit event to Ring Buffer
         bpf_ringbuf_submit(net_info, 0);
         return 0;
