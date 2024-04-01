@@ -26,14 +26,16 @@ const (
 
 
 func logHeader(){
-    log.Printf("%-15s %-6s -> %-15s %-6s %-10s %-10s  %-10s  %-10s  %-10s %-10s %-10s",
+    log.Printf("%-15s %-6s -> %-15s %-6s %-15s %-6s %-8s %-6s %-11s %-8s %-6s %-9s %-10s",
 		"Src addr",
 		"Port",
 		"Dest addr",
 		"Port",
 		"CurTime",
+        "SRtt",
 		"NetProto",
 		"NetCmd",
+        "NetPkgLegth",
 		"AppProto",
 		"AppCmd",
         "AppLength",
@@ -46,14 +48,16 @@ func logEvent(event bpfEvent){
     for _, v := range event.Payload {
         payloadStr += fmt.Sprintf("%02x ", uint8(v)) // 将整数转换为16进制字符串
     }
-    log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10d  %-10d  %-10d %-10d %-15s",
+    log.Printf("%-15s %-6d -> %-15s %-6d %-15d %-6d %-8d %-6d %-11d %-8d %-6d %-9d %-10s",
         intToIP(event.Saddr),
         event.Sport,
         intToIP(event.Daddr),
         event.Dport,
         event.Curtime,
+        event.Srtt,
         event.Netproto,
         event.Netcmd,
+        event.Netpkglength,
         event.Appproto,
         event.Appcmd,
         event.Apppkglength,

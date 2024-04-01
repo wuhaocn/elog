@@ -7,8 +7,8 @@
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
-#define MAX_MAP_ENTRIES 16
 #define MAX_PAYLOAD_LOAD 5
+#define ETH_HLEN 14
 
 // Define event structure
 struct event {
@@ -34,8 +34,27 @@ struct {
 } events SEC(".maps");
 struct event *unused_event __attribute__((unused));
 
-// Function to fill TCP layer information
-static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *iph, struct tcphdr *tcph) {
+struct bpf_map_def SEC("maps") rtt_map = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__be64),
+    .value_size = sizeof(__u64),
+    .max_entries = 100000, // Adjust the maximum number of entries as needed
+};
+struct key {
+    u64 src_dst_ip_port;
+    u32 seq;
+};
+
+// Function to construct the key for the map
+static __always_inline struct key construct_key(struct iphdr *iph, struct tcphdr *tcph, __be32 seq) {
+    struct key k = {
+        .src_dst_ip_port = ((__u64)iph->saddr << 32) | ((__u64)iph->daddr << 16) | tcph->source | tcph->dest,
+        .seq = seq
+    };
+    return k;
+}
+
+static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *iph, struct tcphdr *tcph, __be32 seq) {
     net_info->saddr = iph->saddr;
     net_info->daddr = iph->daddr;
     net_info->netproto = iph->protocol;
@@ -43,11 +62,28 @@ static __always_inline void fill_tcp_info(struct event *net_info, struct iphdr *
     net_info->dport = bpf_ntohs(tcph->dest);
     net_info->netcmd = tcph->syn | (tcph->ack << 1) | (tcph->fin << 2) | (tcph->rst << 3) | (tcph->psh << 4) | (tcph->urg << 5);
     net_info->curtime = bpf_ktime_get_ns();
+
+    // Calculate RTT
+    // Construct key for the map
+    struct key k = construct_key(iph, tcph, seq);
+    // Look up existing timestamp
+    __u64 *rtt_ptr = bpf_map_lookup_elem(&rtt_map, &k);
+    if (rtt_ptr && *rtt_ptr > 0) {
+        // Calculate RTT only if timestamp found in the map
+        __u64 now = bpf_ktime_get_ns();
+        __u64 rtt = now > *rtt_ptr ? now - *rtt_ptr : 0;
+        net_info->srtt = rtt / 1000000; // Convert ns to us
+    }
+    // Store current time in the RTT map
+    __u64 now = bpf_ktime_get_ns();
+    bpf_map_update_elem(&rtt_map, &k, &now, BPF_ANY);
 }
+
+
 
 // Function to fill MQTT information
 static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct tcphdr *tcph) {
-    // Set appproto to IPPROTO_MQTT for MQTT packets
+       // Set appproto to IPPROTO_MQTT for MQTT packets
     net_info->appproto = IPPROTO_MQTT;
     // tcp header length
     u8 tcp_header_length = tcph->doff * 4 ;
@@ -57,7 +93,7 @@ static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *
     u8 tcp_payload_length = skb->len - tcp_payload_offset;
     net_info->netpkglength = tcp_payload_length;
     bpf_skb_load_bytes(skb, tcp_payload_offset, &net_info->appcmd, 1);
-    bpf_skb_load_bytes(skb, tcp_payload_offset + 1, &net_info->apppkglength, 1);
+        bpf_skb_load_bytes(skb, tcp_payload_offset + 1, &net_info->apppkglength, 1);
     bpf_skb_load_bytes(skb, tcp_payload_offset, net_info->payload, 2);
 }
 
@@ -100,7 +136,7 @@ static __always_inline int parse_tc(struct __sk_buff *skb) {
         return 0;
 
     // Fill TCP layer information
-    fill_tcp_info(net_info, iph, tcph);
+    fill_tcp_info(net_info, iph, tcph, ((__u32)tcph->seq));
 
     // Check if it's an MQTT packet
     if (tcph->dest == bpf_htons(MQTT_DEFAULT_PORT) || tcph->source == bpf_htons(MQTT_DEFAULT_PORT)){
