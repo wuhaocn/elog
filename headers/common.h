@@ -128,7 +128,19 @@ struct tcphdr {
 	__sum16	check;
 	__be16	urg_ptr;
 };
-
+// TCP option structure
+struct tcp_option {
+    __u8 kind;
+    __u8 length;
+};
+// TCP option kind values
+#define TCPOPT_EOL      0   // End of options
+#define TCPOPT_NOP      1   // No operation
+#define TCPOPT_MSS      2   // Maximum segment size
+#define TCPOPT_WSCALE   3   // Window scale factor
+#define TCPOPT_SACKPERM 4   // SACK permitted
+#define TCPOPT_SACK     5   // SACK block
+#define TCPOPT_TIMESTAMP 8  // Timestamps
 
 enum {
 	BPF_ANY     = 0,

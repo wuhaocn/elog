@@ -19,7 +19,7 @@ type bpfEvent struct {
 	Daddr        uint32
 	_            [4]byte
 	Curtime      uint64
-	Srtt         uint32
+	Srtt         uint64
 	Netproto     uint8
 	Netcmd       uint8
 	Netpkglength uint8
@@ -27,7 +27,7 @@ type bpfEvent struct {
 	Appcmd       uint8
 	Apppkglength uint8
 	Payload      [5]uint8
-	_            [1]byte
+	_            [5]byte
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.
