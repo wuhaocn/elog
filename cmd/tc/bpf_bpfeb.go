@@ -22,12 +22,14 @@ type bpfEvent struct {
 	Srtt         uint64
 	Netproto     uint8
 	Netcmd       uint8
-	Netpkglength uint8
+	_            [2]byte
+	Netpkglength uint32
 	Appproto     uint8
 	Appcmd       uint8
-	Apppkglength uint8
+	_            [2]byte
+	Apppkglength uint32
 	Payload      [5]uint8
-	_            [5]byte
+	_            [3]byte
 }
 
 // loadBpf returns the embedded CollectionSpec for bpf.

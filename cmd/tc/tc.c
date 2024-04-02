@@ -8,8 +8,8 @@
 char __license[] SEC("license") = "Dual MIT/GPL";
 
 #define MAX_PAYLOAD_LOAD 5
-#define ETH_HLEN 14
 #define SEC_TO_MSEC 1000000ULL
+// TCP 头部的基本长度（不包括选项），单位是 32 位字（4 字节）
 
 // Define event structure
 struct event {
@@ -21,10 +21,10 @@ struct event {
     u64 srtt;
     u8 netproto;
     u8 netcmd;
-    u8 netpkglength;
+    u32 netpkglength;
     u8 appproto;
     u8 appcmd;
-    u8 apppkglength;
+    u32 apppkglength;
     u8 payload[MAX_PAYLOAD_LOAD];
 };
 
@@ -40,7 +40,6 @@ struct key {
     __u32 dst_ip;
     __u16 src_port;
     __u16 dst_port;
-    __u32 seq_num; // 用于PSH包的序列号，或者用于ACK包的确认序列号
 };
 
 struct bpf_map_def SEC("maps") rtt_map = {
@@ -58,7 +57,6 @@ static __always_inline struct key construct_key(struct iphdr *iph, struct tcphdr
         .dst_ip = is_ack ? iph->saddr : iph->daddr,
         .src_port = bpf_htons(is_ack ? tcph->dest : tcph->source),
         .dst_port = bpf_htons(is_ack ? tcph->source : tcph->dest),
-        .seq_num = is_ack ? tcph->ack_seq : tcph->seq,
     };
     return k;
 }
@@ -66,6 +64,10 @@ static __always_inline struct key construct_key(struct iphdr *iph, struct tcphdr
 // Function to convert nanoseconds to milliseconds
 static __always_inline __u32 convert_ns_to_ms(__u64 ns) {
     return ns / 1000000;
+}
+// Function to convert microseconds to nanoseconds
+static __always_inline __u64 convert_us_to_ns(__u32 us) {
+    return us * 1000;
 }
 
 
@@ -75,30 +77,31 @@ static __always_inline void fill_tcp_rtt_info(struct __sk_buff *skb, struct even
         // Error handling: Invalid input parameters
         return;
     }
-
     __u64 now = bpf_ktime_get_ns(); // Get the current timestamp in nanoseconds
-
     // Record the timestamp for SYN or PSH packets
     if (tcph->syn || tcph->psh) {
         struct key syn_key = construct_key(iph, tcph, 0);
         bpf_map_update_elem(&rtt_map, &syn_key, &now, BPF_ANY);
     }
-
     // Calculate RTT for ACK packets
     if (tcph->ack) {
         struct key ack_key = construct_key(iph, tcph, 1);
         __u64 *timestamp = bpf_map_lookup_elem(&rtt_map, &ack_key);
         if (timestamp) {
-            // Calculate the RTT using the stored timestamp
             __u64 rtt = now - *timestamp;
-            // Store the calculated RTT in milliseconds
             net_info->srtt = convert_ns_to_ms(rtt);
-        } else {
-            // Handle the case where the timestamp is not found
-            // This could be due to a previous packet drop or an error in key construction
-            net_info->srtt = 0; // Or some other error value
         }
     }
+    // // Check if the TCP header has the timestamp option
+    // if (tcph->doff > 5) {
+    //     // Calculate TCP options offset
+    //     u8 tcp_options_offset =  4 + sizeof(struct ethhdr) + sizeof(struct iphdr) +  sizeof(struct tcphdr);
+    //     // Extract TCP options
+    //     __u32 tsval, tsecr;
+    //     bpf_skb_load_bytes(skb, tcp_options_offset, &tsval, sizeof(tsval));
+    //     bpf_skb_load_bytes(skb, tcp_options_offset + sizeof(tsval), &tsecr, sizeof(tsecr));
+    // }
+
 }
 static __always_inline void fill_tcp_info(struct __sk_buff *skb, struct event *net_info, struct iphdr *iph, struct tcphdr *tcph) {
     net_info->saddr = iph->saddr;
@@ -112,10 +115,6 @@ static __always_inline void fill_tcp_info(struct __sk_buff *skb, struct event *n
 }
 
 
-
-
-
-
 // Function to fill MQTT information
 static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct tcphdr *tcph) {
        // Set appproto to IPPROTO_MQTT for MQTT packets
@@ -126,9 +125,9 @@ static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *
     u8 tcp_payload_offset = tcp_header_length + sizeof(struct ethhdr) + sizeof(struct iphdr);
     // eth + ip + tcp header length
     u8 tcp_payload_length = skb->len - tcp_payload_offset;
-    //net_info->netpkglength = tcp_payload_length;
+    net_info->netpkglength = tcp_payload_length;
     bpf_skb_load_bytes(skb, tcp_payload_offset, &net_info->appcmd, 1);
-    //bpf_skb_load_bytes(skb, tcp_payload_offset + 1, &net_info->apppkglength, 1);
+    bpf_skb_load_bytes(skb, tcp_payload_offset + 1, &net_info->apppkglength, 1);
     bpf_skb_load_bytes(skb, tcp_payload_offset, net_info->payload, 2);
 }
 
