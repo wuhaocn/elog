@@ -15,7 +15,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
@@ -100,7 +99,7 @@ func readLoop(rd *ringbuf.Reader) {
 			continue
 		}
 
-		log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10d  %-10s %-10d  %-10d",
+		log.Printf("%-15s %-6d -> %-15s %-6d %-10d %-10d  %-10d  %-10d %-10d  %-10d",
 			intToIP(event.Saddr),
 			event.Sport,
 			intToIP(event.Daddr),
@@ -108,7 +107,7 @@ func readLoop(rd *ringbuf.Reader) {
 			event.Curtime,
 			event.Netproto,
 			event.Netcmd,
-			netflagsToString(event.Netflags),
+			event.Netflags,
 			event.Appproto,
 			event.Appcmd,
 		)
@@ -120,30 +119,4 @@ func intToIP(ipNum uint32) net.IP {
 	return ip
 }
 
-
-// 将 netflags 的 uint8 值转换为字符串表示
-func netflagsToString(flags uint8) string {
-    var flagStrings []string
-
-    if flags&1 != 0 {
-        flagStrings = append(flagStrings, "SYN")
-    }
-    if flags&2 != 0 {
-        flagStrings = append(flagStrings, "ACK")
-    }
-    if flags&4 != 0 {
-        flagStrings = append(flagStrings, "FIN")
-    }
-    if flags&8 != 0 {
-        flagStrings = append(flagStrings, "RST")
-    }
-    if flags&16 != 0 {
-        flagStrings = append(flagStrings, "PSH")
-    }
-    if flags&32 != 0 {
-        flagStrings = append(flagStrings, "URG")
-    }
-
-    return strings.Join(flagStrings, ", ")
-}
 

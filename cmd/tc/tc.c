@@ -27,6 +27,13 @@ struct event {
     u32 apppkglength;
     u8 payload[MAX_PAYLOAD_LOAD];
 };
+struct key {
+    __u32 src_ip;
+    __u32 dst_ip;
+    __u16 src_port;
+    __u16 dst_port;
+};
+
 
 // Define Ring Buffer for event structure
 struct {
@@ -35,13 +42,6 @@ struct {
 } events SEC(".maps");
 struct event *unused_event __attribute__((unused));
 
-struct key {
-    __u32 src_ip;
-    __u32 dst_ip;
-    __u16 src_port;
-    __u16 dst_port;
-};
-
 struct bpf_map_def SEC("maps") rtt_map = {
     .type = BPF_MAP_TYPE_HASH,
     .key_size = sizeof(struct key),
@@ -49,6 +49,13 @@ struct bpf_map_def SEC("maps") rtt_map = {
     .max_entries = 100000, // Adjust the maximum number of entries as needed
 };
 
+// 定义 BPF Map 用于存储协议名称和端口列表
+struct bpf_map_def SEC("maps") protocol_ports_map = {
+    .type        = BPF_MAP_TYPE_HASH,
+    .key_size    = 16,                // 假设协议名称最大长度为 16
+    .value_size  = sizeof(__u16) *3,  // 假设最多存储 3 个端口
+    .max_entries = 10,                // 假设最多存储 100,000 个配置项
+};
 
 // Function to construct the key for TCP packets
 static __always_inline struct key construct_key(struct iphdr *iph, struct tcphdr *tcph, int is_ack) {
@@ -59,15 +66,6 @@ static __always_inline struct key construct_key(struct iphdr *iph, struct tcphdr
         .dst_port = bpf_htons(is_ack ? tcph->source : tcph->dest),
     };
     return k;
-}
-
-// Function to convert nanoseconds to milliseconds
-static __always_inline __u32 convert_ns_to_ms(__u64 ns) {
-    return ns / 1000000;
-}
-// Function to convert microseconds to nanoseconds
-static __always_inline __u64 convert_us_to_ns(__u32 us) {
-    return us * 1000;
 }
 
 
@@ -89,7 +87,7 @@ static __always_inline void fill_tcp_rtt_info(struct __sk_buff *skb, struct even
         __u64 *timestamp = bpf_map_lookup_elem(&rtt_map, &ack_key);
         if (timestamp) {
             __u64 rtt = now - *timestamp;
-            net_info->srtt = convert_ns_to_ms(rtt);
+            net_info->srtt = rtt / 1000000;
         }
     }
     // // Check if the TCP header has the timestamp option
@@ -116,7 +114,7 @@ static __always_inline void fill_tcp_info(struct __sk_buff *skb, struct event *n
 
 
 // Function to fill MQTT information
-static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct tcphdr *tcph) {
+static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *net_info, struct iphdr *iph, struct tcphdr *tcph) {
        // Set appproto to IPPROTO_MQTT for MQTT packets
     net_info->appproto = IPPROTO_MQTT;
     // tcp header length
@@ -131,10 +129,44 @@ static __always_inline void fill_mqtt_info(struct __sk_buff *skb, struct event *
     bpf_skb_load_bytes(skb, tcp_payload_offset, net_info->payload, 2);
 }
 
+#define PROTOCOL_MQTT "mqtt"
+static __always_inline bool check_trace_mqtt(struct __sk_buff *skb, struct iphdr *iph, struct tcphdr *tcph) {
+
+    char protocol[16] = PROTOCOL_MQTT; 
+    __u16 *ports_mqtt = bpf_map_lookup_elem(&protocol_ports_map, protocol);
+    if (!ports_mqtt) {
+        return false; 
+    }
+
+    int num_ports = 0;
+    while (num_ports < 3 && ports_mqtt[num_ports] != 0) {
+        num_ports++;
+    }
+    for (int i = 0; i < num_ports; i++) {
+        __u16 port = ports_mqtt[i];
+        if (port == 0) {
+            break;
+        }
+        if (tcph->dest == bpf_htons(port) || tcph->source == bpf_htons(port)){
+            struct event *net_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
+            if (!net_info){
+                return false;
+            }
+            fill_tcp_info(skb, net_info, iph, tcph);
+            fill_mqtt_info(skb, net_info, iph, tcph);
+            bpf_ringbuf_submit(net_info, 0);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 
 
 // Function to parse IP source address and record relevant information to Ring Buffer
 static __always_inline int parse_tc(struct __sk_buff *skb) {
+
     void *data_end = (void *)(long)skb->data_end;
     void *data = (void *)(long)skb->data;
 
@@ -164,22 +196,8 @@ static __always_inline int parse_tc(struct __sk_buff *skb) {
     if ((void *)(tcph + 1) > data_end)
         return 0;
 
-    // Reserve space in the Ring Buffer for event structure
-    struct event *net_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
-    if (!net_info)
-        return 0;
+    check_trace_mqtt(skb, iph, tcph);
 
-    // Fill TCP layer information
-    fill_tcp_info(skb, net_info, iph, tcph);
-
-    // Check if it's an MQTT packet
-    if (tcph->dest == bpf_htons(MQTT_DEFAULT_PORT) || tcph->source == bpf_htons(MQTT_DEFAULT_PORT)){
-        fill_mqtt_info(skb, net_info, tcph);
-        // Submit event to Ring Buffer
-        bpf_ringbuf_submit(net_info, 0);
-        return 0;
-    }
-    bpf_ringbuf_discard(net_info, 0);
     return 0;
 }
 

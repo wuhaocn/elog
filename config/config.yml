@@ -1,0 +1,4 @@
+device: enp0s1
+protocol:
+  mqtt: [1883]
+

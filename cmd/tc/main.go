@@ -23,6 +23,11 @@ import (
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "linux" -type event bpf tc.c -- -I../../headers
 
 func main() {
+	// Read configuration file
+	config, err := readConfig("config/config.yml")
+	if err != nil {
+		log.Fatalf("Failed to read configuration file: %v", err)
+	}
 	stopper := make(chan os.Signal, 1)
 	signal.Notify(stopper, os.Interrupt, syscall.SIGTERM)
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -35,6 +40,9 @@ func main() {
 	}
 	defer objs.Close()
 	
+	//config port
+	updateConfig(config, objs.ProtocolPortsMap)
+
 	ifaceName := os.Args[1]
 	attachFilter(ifaceName, objs.bpfPrograms.TcProgFunc)
 
@@ -48,6 +56,29 @@ func main() {
 	go readLoop(rd)
 	// Wait
 	<-stopper
+}
+
+func updateConfig(config *Config, bpfMap *ebpf.Map) {
+	for protocol, ports := range config.Protocol {
+		// 如果端口列表长度超过3，则截取前3个端口
+		if len(ports) > 3 {
+			ports = ports[:3]
+		}
+		// 创建一个数组，长度为6，用于存储端口号
+		value := make([]byte, 6) // 6 字节
+		for i, port := range ports {
+			offset := i * 2 // 每个端口号占据2个字节
+			binary.LittleEndian.PutUint16(value[offset:], uint16(port))
+		}
+		// 创建固定长度为 16 字节的键
+		var key [16]byte
+		copy(key[:], protocol)
+		// 将协议名称转换为固定大小的字节数组
+		err := bpfMap.Put(key[:], value)
+		if err != nil {
+			log.Fatalf("Failed to put key-value pair to BPF Map: %v", err)
+		}
+	}
 }
 
 func attachFilter(attachTo string, program *ebpf.Program) error {
