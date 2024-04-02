@@ -1,4 +1,9 @@
 # ebpf log
+## env
+```
+sudo apt install clang libelf1 libelf-dev zlib1g-dev
+```
+
 ## mqtt log
 * build
 ```
